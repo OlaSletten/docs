@@ -1,0 +1,61 @@
+name: CI - Node.js Build & Lint
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || (hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || (hashFiles('yarn.lock') != '' && 'yarn' || '')) }}
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f pnpm-lock.yaml ]; then
+            npm install -g pnpm && pnpm install --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            yarn install --frozen-lockfile
+          else
+            npm install
+          fi
+
+      - name: Type Check (if configured)
+        run: |
+          if npx --no-install tsc --version >/dev/null 2>&1; then
+            npx tsc --noEmit
+          else
+            echo "tsc not configured, skipping"
+          fi
+
+      - name: Lint (if script exists)
+        run: |
+          if npm run | grep -E "^  lint" >/dev/null 2>&1; then
+            npm run lint
+          else
+            echo "lint script not present in package.json, skipping"
+          fi
+
+      - name: Test (if script exists)
+        run: |
+          if npm run | grep -E "^  test" >/dev/null 2>&1; then
+            npm test --if-present
+          else
+            echo "test script not present, skipping"
+          fi
